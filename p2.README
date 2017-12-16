@@ -1,0 +1,109 @@
+
+PROJECT TITLE: Given a certain function, using MPI, find the derivatives at all grid points, errors in derivatives, average error, standard deviation of the errors and the local maxima/minima
+
+
+INTRODUCTION: In this project a function and its derivative is already provided. Along with these two, the range over which the maxima and minima will be calculated is also provided. The range will be cut into NGRID(which is provided) points, and the derivative wil be calculated at each point. The error associated with each derivative is also calculated along with the average error. After that the standard deviation of the errors are calculated. Finally each derivative is checked with epsilon(which is provided). If the derivative is less than epsilon, it is considered to be a local maxima/minima. The average error, standard deviation of the errors, local maxima/minima, and the value of the function at the local maxima/minima is written to the file "err.dat" and is our final output
+
+PREQUISITES: A compiler capable of compiling MPI programs, and a multi core processor
+
+SOLUTION: To implement this project using MPI, it is best that the problem is divided into smaller parts and proceeded step by step. The steps can be illustrated as follows:
+1- Divide the grid into smaller parts based on the rank of each processor
+2- Calculate the value of the function at each point of the sub-grid which each processor has
+3- Calculate the derivative at each point using finite difference method
+4- Calculate the errors in the derivatives and subsequently the average error
+5- Calculate the standard deviation of the errors
+6- Find out the local maxima/minima
+7- Print values to file
+
+The following sections will illustrate how to solve each of these smaller problems individually, and thus solve the problem as a whole
+
+1: The number of grid points in the entire range is provided in the program. Based on the processor rank the grid is divided into slices, and each processor gets one slice. In case the number of grid points is not exactly divisible by the number of processors, each processor gets one extra grid point till the remainder becomes zero. Suppose the number of grid points is 11, and the number of processors is 3. Then each process will get 3 grid points, and the remaining 2 will be allocated to processor 0 and processor 1.
+
+2: The value of "x" at each grid point can be calculated very easily. If the grid starts from 5, and the difference between each subsequent grid point is 0.5, the value of the 10th grid point will be, 5+(10*0.5), which is 10. Since the function is already provided, using this value of x the corresponding value of y can be calculated, as y=f(x). 
+
+3: The derivative at each point is calculated using the finite differences method. Now calculation of the derivative using finite differences method requires communication across boundaries. The formula being used is dy[i] = (y[i + 1] - y[i - 1])/(2.0 * dx), where i is a for loop variable. The for loop runs from the start to the end of the grid allocated to that particular process. The first iteration will require the last value of the grid provided to the processor with the previous rank, and the last iteration will require the first value of the grid provided to the processor with the next rank. This is where boundary communication comes into play. In this project that has been achieved into two ways, one with blocking communication, the other with non blocking communication. Blocking communication involves the use of MPI_Send and MPI_Receive. Non blocking communication uses MPI_Isend and MPI_Ireceive. 
+
+4: Once the derivatives are calculated, the error of each derivative is calculated by subtracting it from the actual value of the derivative. The actual value can be calculated as the formula of the derivative is known, since the function provided is a polynomial. So the difference between the derivative obtained via finite difference method, and the derivative obtained by substituting the value of x in f'(x) is the error of that derivative. The average of all these errors is the average error, which is calculated at the root node
+
+5: The formula for standard deviation is given below
+                   ____________________________
+          __      /      _N_
+  SD    =   \    /  1    \   
+             \  /  --- *  >  (x[i] - avg_x)^2 
+              \/    N    /__  
+                          i = 1 
+where N is the number of elements, x[i] is the error for each i, and avg_x is the average error
+
+The standard deviation is calculated at the root node.
+
+6: Next step is to find the local maxima/minima. This found by comparing each derivative with a predefined value "epsilon." If the value of the derivative is less than epsilon, then the point where that particular derivative lies, is a local maxima/minima. But what has to be kept in mind is that the number of local maxima/minima can never exceed the value (degree-1), where degree is the degree of the polynomial. Each processor will find it's own local maxima or minima. To aggregate all of those a manual reduction, or MPI_Reduce is used.
+
+7: Finally the average error, standard deviation, local maxima/minima, and the value of the function at that local maxima/minima is written to the file err.dat
+
+COMPILING THE PROGRAM: make all
+
+RUNNING THE PROGRAM: prun ./p2
+
+EXPERIMENTS RUN:
+
+1: Varying NGRID and noting the change in Average Error
+
+Table 1.
+
+NGRID 					Average Error
+500					2.51003e-05
+1000					6.262519e-06
+2000					1.564064e-06
+4000					3.908204e-07
+10000					6.25125e-08
+
+Inference: As the value of NGRID increases, the average error keeps on decreasing. This is quite obvious, because as you create shorter intervals in the grid, the error in finding the derivatives will decrease.
+
+2. Varying epsilon and noting the change in Average Error
+
+Table 2.
+
+NGRID	Epsilon 			Average Error
+1000	0.45				6.262519e-06
+1000	0.045				6.262519e-06
+1000	0.0045				6.262519e-06
+1000	0.00045				6.262519e-06
+1000	0.000045			6.262519e-06
+
+Inference: As the value of epsilon changes, the average error does not change. This is quite obvious as the average error is independent of epsilon.
+
+3. Comparing execution time for manual reduction with blocking communication and manual reduction with non blocking communication
+
+Table 3.
+
+Number of Nodes		Number of Processes	Blocking(in s)	   	Non Blocking(in s)
+	3		3		 	1.06411e-02		7.131243e-03
+	5		5			1.298165e-02		9.526014e-03
+	8		8			1.312661e-02		1.117349e-02
+
+Inference: For the same number of nodes and processes, non blocking communication always gives better performance than blocking communication. Also, as the number of nodes and processes increase, the time subsequently increases, as there is more communication among processes and there is more overhead as well.
+
+4. Comparing execution time for MPI_Reduce with blocking communication and MPI_Reduce with non-blocking communication
+
+Number of Nodes		Number of Processes		Blocking(in s)		Non Blocking(in s)
+	3		3				6.593466e-03		  2.099347e-02
+	4		4				6.406307e-03		  6.299734e-03
+	5		5				5.600452e-03		  4.246950e-03
+
+Inference: Same inference as drawn from previous table. Non blocking always gives better performance, as the processes don't have to wait for the send or receive to complete. They can go about doing their own work and ultimately wait at the barrier.
+
+5. Varying NGRID and noting the change in execution time
+
+Table 5.
+
+NGRID		Time(in s)
+500		7.679939e-03
+1000		1.091766e-02
+2000		1.324487e-02
+4000		1.820421e-02
+10000		2.864718e-02
+
+Inference: As NGRID increases, the execution time increases, as the processor has to execute more points, and thus takes more time.
+
+
+-----------------------------------------END OF DOCUMENT------------------------------------------------------------------------
